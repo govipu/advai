@@ -1,0 +1,86 @@
+// cout << "Parsed Assignments:\n";
+
+// for (auto &p : assignments) {
+//     Assignment &a = p.second;
+
+//     cout << "A" << a.id
+//          << " | prompts = " << a.promptCount
+//          << " | deps = ";
+
+//     if (a.dependencies.empty()) {
+//         cout << "None";
+//     } else {
+//         for (int d : a.dependencies) {
+//             cout << "A" << d << " ";
+//         }
+//     }
+
+//     cout << "\n";
+// }
+#include<bits/stdc++.h>
+using namespace std;
+struct Assignment {
+    int id;                         // A1 → 1, A2 → 2, etc.
+    int promptCount;                // prompts needed
+    vector<int> dependencies;       // predecessors
+    vector<int> dependents;         // reverse edges
+    int remainingDeps;              // unmet dependencies
+    bool completed;                 // status flag
+};
+
+unordered_map<int, Assignment> assignments;
+
+set<int> readySet;
+
+int totalAssignments;
+
+struct StudentDayState {
+    int studentId;
+    int remainingPrompts;
+    vector<int> todaysAssignments;
+};
+
+struct DaySchedule {
+    int dayNumber;
+    vector<StudentDayState> students;
+};
+
+
+int main(int argc,char* argv[]){
+int n,k,m;
+string l;
+m=stoi(argv[2]);
+ifstream fin(argv[1]);
+while (getline(fin, l)) {
+if (l.empty()) continue;
+if (l[0] == '%') continue;
+stringstream ss(l);
+char type;
+ss >> type;
+if (type == 'N') {
+    ss >> n;
+}
+else if (type == 'K') {
+    ss >> k;
+}
+else if (type == 'A') {
+    int id, promptCount;
+    ss >> id >> promptCount;
+    Assignment a;
+    a.id = id;
+    a.promptCount = promptCount;
+    a.completed = false;
+    int dep;
+    while (ss >> dep && dep != 0) {
+        // store dependency
+        a.dependencies.push_back(dep);
+    }
+    assignments[id]=a;
+
+    // store assignment object
+}
+
+
+
+}
+}
