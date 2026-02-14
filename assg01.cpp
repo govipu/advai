@@ -1,156 +1,273 @@
-#include <bits/stdc++.h>
+#include<bits/stdc++.h>
+
 using namespace std;
 
 struct Assignment {
     int id;
     int promptCount;
     vector<int> dependencies;
-    vector<int> dependents;
-    int remainingDeps;
-    bool completed;
+    int level;
 };
 
-unordered_map<int, Assignment> assignments;
-int N, K, M;
-int totalAssignments = 0;
-int completedCount = 0;
-int totalValidSchedules = 0; 
+typedef vector<vector<vector<int>>> Schedule;
 
-struct StudentDay {
-    int promptsLeft;
-    vector<int> tasks;
-};
+int N, K, numDays;
+vector<Assignment> assignments;
+vector<Schedule> allSchedules;
+set<string> uniqueSchedules;
 
-vector<vector<vector<int>>> currentSchedule; 
+long long totalScheduleCount = 0;
+const int MAX_SCHEDULES_TO_STORE = 20;
+long long nodeVisits = 0;
 
-void printSchedule(const vector<vector<vector<int>>>& sched) {
-    cout << "\nVALID SCHEDULE #" << totalValidSchedules << ":" << endl;
-    for (int d = 0; d < sched.size(); ++d) {
-        cout << "Day " << d + 1 << ":" << endl;
-        for (int s = 0; s < N; ++s) {
-            cout << "  Student " << s + 1 << ": ";
-            if (sched[d][s].empty()) cout << "-";
-            else {
-                for (size_t i = 0; i < sched[d][s].size(); ++i)
-                    cout << "A" << sched[d][s][i] << (i == sched[d][s].size() - 1 ? "" : ", ");
+
+void calculateLevels() {
+    vector<int> levels(assignments.size(), 0);
+
+    for (int iter = 0; iter < assignments.size(); iter++) {
+        for (int i = 0; i < assignments.size(); i++) {
+            for (int dep : assignments[i].dependencies) {
+                levels[i] = max(levels[i], levels[dep] + 1);
             }
-            cout << endl;
         }
     }
-    cout << "-----------------------" << endl;
+
+    for (int i = 0; i < assignments.size(); i++) {
+        assignments[i].level = levels[i];
+    }
 }
 
-void solve(int day, vector<int> available) {
-    if (completedCount == totalAssignments) {
-        totalValidSchedules++; 
-        printSchedule(currentSchedule);
+string scheduleToString(const Schedule& schedule) {
+    string result;
+    for (size_t day = 0; day < schedule.size(); day++) {
+        for (size_t student = 0; student < schedule[day].size(); student++) {
+            vector<int> sorted = schedule[day][student];
+            sort(sorted.begin(), sorted.end());
+            for (int assign : sorted) {
+                result += to_string(day) + "," +
+                          to_string(student) + "," +
+                          to_string(assign) + ";";
+            }
+        }
+    }
+    return result;
+}
+
+bool canDoAssignment(int assignmentIdx, const vector<bool>& completed) {
+    for (int dep : assignments[assignmentIdx].dependencies) {
+        if (!completed[dep]) return false;
+    }
+    return true;
+}
+
+vector<int> getAvailableAssignments(const vector<bool>& completed) {
+    vector<int> available;
+
+    for (size_t i = 0; i < assignments.size(); i++) {
+        if (!completed[i] && canDoAssignment(i, completed)) {
+            available.push_back(i);
+        }
+    }
+
+    sort(available.begin(), available.end(), [](int a, int b) {
+        if (assignments[a].level != assignments[b].level)
+            return assignments[a].level < assignments[b].level;
+        return assignments[a].promptCount < assignments[b].promptCount;
+    });
+
+    return available;
+}
+
+bool allCompleted(const vector<bool>& completed) {
+    for (bool c : completed)
+        if (!c) return false;
+    return true;
+}
+
+bool isPossible(const vector<bool>& completed, int currentDay, int assignmentsLeft) {
+    if (assignmentsLeft == 0) return true;
+
+    int daysLeft = numDays - currentDay;
+    if (daysLeft <= 0) return false;
+
+    int totalPromptsNeeded = 0;
+    for (size_t i = 0; i < completed.size(); i++) {
+        if (!completed[i]) {
+            totalPromptsNeeded += assignments[i].promptCount;
+        }
+    }
+
+    int totalCapacity = daysLeft * N * K;
+    return totalPromptsNeeded <= totalCapacity;
+}
+
+void findSchedulesOptimized(vector<bool> completed, int day,
+                            Schedule schedule,
+                            vector<int> remainingPrompts,
+                            int assignmentsLeft) {
+
+
+
+    nodeVisits++;
+
+    if (allCompleted(completed)) {
+        string schedStr = scheduleToString(schedule);
+        if (uniqueSchedules.find(schedStr) == uniqueSchedules.end()) {
+            uniqueSchedules.insert(schedStr);
+            totalScheduleCount++;
+
+            if (allSchedules.size() < MAX_SCHEDULES_TO_STORE) {
+                allSchedules.push_back(schedule);
+            }
+        }
         return;
     }
-    
-    if (day > M) return;
 
-    int numAvailable = available.size();
-    vector<StudentDay> students(N, {K, {}});
-    
-    auto distribute = [&](auto self, int taskIdx, bool dayHasActivity) {
-        if (taskIdx == numAvailable) {
-            if (!dayHasActivity && !available.empty()) return; 
+    if (day >= numDays) return;
 
-            vector<vector<int>> dayData(N);
-            vector<int> finishedToday;
-            for(int i=0; i<N; ++i) {
-                dayData[i] = students[i].tasks;
-                for(int id : students[i].tasks) finishedToday.push_back(id);
-            }
+    if (!isPossible(completed, day, assignmentsLeft)) return;
 
-            for(int id : finishedToday) {
-                assignments[id].completed = true;
-                completedCount++;
-                for(int dep : assignments[id].dependents) assignments[dep].remainingDeps--;
-            }
-            currentSchedule.push_back(dayData);
+    vector<int> available = getAvailableAssignments(completed);
 
-            vector<int> nextAvailable;
-            for(auto const& [id, a] : assignments) {
-                if(!a.completed && a.remainingDeps == 0) nextAvailable.push_back(id);
-            }
-            sort(nextAvailable.begin(), nextAvailable.end());
-            
-            solve(day + 1, nextAvailable);
+    if (available.empty()) {
+        vector<int> newPrompts(N, K);
+        findSchedulesOptimized(completed, day + 1, schedule, newPrompts, assignmentsLeft);
+        return;
+    }
 
-            currentSchedule.pop_back();
-            for(int id : finishedToday) {
-                assignments[id].completed = false;
-                completedCount--;
-                for(int dep : assignments[id].dependents) assignments[dep].remainingDeps++;
-            }
-            return;
-        }
+    int maxToConsider = min((int)available.size(), 2);
 
-        int aid = available[taskIdx];
-        int cost = assignments[aid].promptCount;
+    for (int idx = 0; idx < maxToConsider; idx++) {
+        int assignIdx = available[idx];
+        int promptsNeeded = assignments[assignIdx].promptCount;
 
-        set<int> seenPrompts; 
-        for (int i = 0; i < N; ++i) {
-            if (students[i].promptsLeft >= cost && seenPrompts.find(students[i].promptsLeft) == seenPrompts.end()) {
-                seenPrompts.insert(students[i].promptsLeft);
-                students[i].promptsLeft -= cost;
-                students[i].tasks.push_back(aid);
-                self(self, taskIdx + 1, true);
-                students[i].tasks.pop_back();
-                students[i].promptsLeft += cost;
+        for (int student = 0; student < N; student++) {
+            if (remainingPrompts[student] >= promptsNeeded) {
+
+                vector<bool> newCompleted = completed;
+                newCompleted[assignIdx] = true;
+
+                vector<int> newPrompts = remainingPrompts;
+                newPrompts[student] -= promptsNeeded;
+
+                Schedule newSchedule = schedule;
+                while (newSchedule.size() <= (size_t)day) {
+                    newSchedule.push_back(vector<vector<int>>(N));
+                }
+
+                newSchedule[day][student].push_back(assignIdx);
+
+                findSchedulesOptimized(newCompleted, day,
+                                       newSchedule, newPrompts,
+                                       assignmentsLeft - 1);
             }
         }
-        self(self, taskIdx + 1, dayHasActivity);
-    };
+    }
 
-    distribute(distribute, 0, false);
+    bool workDone = false;
+    for (int p : remainingPrompts) {
+        if (p < K) {
+            workDone = true;
+            break;
+        }
+    }
+
+    if (workDone) {
+        vector<int> newPrompts(N, K);
+        findSchedulesOptimized(completed, day + 1, schedule, newPrompts, assignmentsLeft);
+    }
 }
 
 int main(int argc, char* argv[]) {
-    if (argc < 3) {
-        cout << "Usage: <exe> <input_file> <num_days>" << endl;
+
+    if (argc != 3) {
+        cerr << "Usage: " << argv[0]
+             << " <input-filename> <number-of-days>" << endl;
         return 1;
     }
-    M = stoi(argv[2]);
-    ifstream fin(argv[1]);
-    if (!fin) {
-        cout << "Error opening file." << endl;
+
+    string filename = argv[1];
+    numDays = stoi(argv[2]);
+
+    ifstream inFile(filename);
+    if (!inFile) {
+        cerr << "Error opening file" << endl;
         return 1;
     }
 
     string line;
-    while (getline(fin, line)) {
+    while (getline(inFile, line)) {
         if (line.empty() || line[0] == '%') continue;
-        stringstream ss(line);
-        char type; ss >> type;
-        if (type == 'N') ss >> N;
-        else if (type == 'K') ss >> K;
+
+        istringstream iss(line);
+        char type;
+        iss >> type;
+
+        if (type == 'N') {
+            iss >> N;
+        }
+        else if (type == 'K') {
+            iss >> K;
+        }
         else if (type == 'A') {
-            int id, pc, dep;
-            ss >> id >> pc;
-            Assignment a; a.id = id; a.promptCount = pc; a.completed = false;
-            while (ss >> dep && dep != 0) a.dependencies.push_back(dep);
-            assignments[id] = a;
+            Assignment a;
+            iss >> a.id >> a.promptCount;
+
+            int dep;
+            while (iss >> dep && dep != 0) {
+                a.dependencies.push_back(dep - 1);
+            }
+
+            a.level = 0;
+            assignments.push_back(a);
         }
     }
 
-    for (auto &p : assignments) {
-        for (int d : p.second.dependencies) assignments[d].dependents.push_back(p.first);
-        p.second.remainingDeps = p.second.dependencies.size();
+    calculateLevels();
+
+    vector<bool> completed(assignments.size(), false);
+    vector<int> remainingPrompts(N, K);
+    Schedule schedule;
+    schedule.push_back(vector<vector<int>>(N));
+
+    findSchedulesOptimized(completed, 0, schedule,
+                           remainingPrompts, assignments.size());
+
+    cout << "Total valid schedules found: "
+         << totalScheduleCount << endl;
+    
+    if(totalScheduleCount>0)
+    cout << "\nShowing first " << allSchedules.size() << " schedules:\n\n";
+
+    int schedNum = 1;
+    for (const auto& sched : allSchedules) {
+        cout << "Schedule " << schedNum++ << ":\n";
+
+        for (size_t day = 0; day < sched.size(); day++) {
+            bool dayHasWork = false;
+
+            for (size_t student = 0; student < sched[day].size(); student++) {
+                if (!sched[day][student].empty()) {
+                    dayHasWork = true;
+                    break;
+                }
+            }
+
+            if (!dayHasWork) continue;
+
+            cout << "  Day " << day + 1 << ":\n";
+            for (size_t student = 0; student < sched[day].size(); student++) {
+                if (!sched[day][student].empty()) {
+                    cout << "    Student " << student + 1 << ": ";
+                    for (int idx : sched[day][student]) {
+                        cout << "A" << assignments[idx].id << " ";
+                    }
+                    cout << "\n";
+                }
+            }
+        }
+        cout << "\n";
     }
-    totalAssignments = assignments.size();
-
-    vector<int> initial;
-    for (auto const& [id, a] : assignments) if (a.remainingDeps == 0) initial.push_back(id);
-    sort(initial.begin(), initial.end());
-
-    solve(1, initial);
-
-    if (totalValidSchedules == 0) {
-        cout << "No schedule possible" << endl;
-    }
-    cout << "Total number of valid schedules: " << totalValidSchedules << endl;
 
     return 0;
 }
